@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+google_credentials.json
+.vscode/
+.idea/
+explore.py
+test_*.py
+check_*.py
+sync_once.py
+list_*.py
+

@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.git
+.gitignore
+explore.py
+test_*.py
+check_*.py
+sync_once.py
+list_*.py
+

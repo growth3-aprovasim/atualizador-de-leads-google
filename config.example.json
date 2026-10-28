@@ -1,0 +1,30 @@
+{
+  "sync_interval_minutes": 10,
+  "campaigns": [
+    {
+      "name": "Projeto TJ-SP Pós-Edital [PES-PPE-26]",
+      "campaign_filter": "[PES-PPE-26]",
+      "exclude_vip": true,
+      "is_vip": false,
+      "spreadsheet_id": "1XDa4buD5pLFbidn9vkBILUTjR8p-aRkBd50mzHXsg3M",
+      "sheet_name": "LEAD TOTAL"
+    },
+    {
+      "name": "Grupo VIP [PES-PPE-26]",
+      "campaign_filter": "[PES-PPE-26]",
+      "exclude_vip": false,
+      "is_vip": true,
+      "spreadsheet_id": "1XDa4buD5pLFbidn9vkBILUTjR8p-aRkBd50mzHXsg3M",
+      "sheet_name": "LEAD TOTAL VIPS"
+    },
+    {
+      "name": "Exemplo Outra Campanha [PI-NOV-26]",
+      "campaign_filter": "[PI-NOV-26]",
+      "exclude_vip": true,
+      "is_vip": false,
+      "spreadsheet_id": "OUTRO_ID_DE_PLANILHA_AQUI",
+      "sheet_name": "LEAD TOTAL"
+    }
+  ]
+}
+

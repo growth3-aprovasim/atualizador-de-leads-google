@@ -1,0 +1,14 @@
+{
+  "sync_interval_minutes": 10,
+  "campaigns": [
+    {
+      "name": "Projeto TJ-SP Pós-Edital [PES-PPE-26]",
+      "campaign_filter": "[PES-PPE-26]",
+      "exclude_vip": true,
+      "is_vip": false,
+      "spreadsheet_id": "1XDa4buD5pLFbidn9vkBILUTjR8p-aRkBd50mzHXsg3M",
+      "sheet_name": "LEAD TOTAL"
+    }
+  ]
+}
+

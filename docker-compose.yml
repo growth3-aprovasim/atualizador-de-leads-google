@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  leads-sync:
+    build: .
+    container_name: leads_sheets_sync
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./config.json:/app/config.json
+      - ./google_credentials.json:/app/google_credentials.json:ro
+    environment:
+      - TZ=America/Sao_Paulo
+      - PORT=5000
