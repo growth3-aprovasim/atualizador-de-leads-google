@@ -179,21 +179,15 @@ def sync_campaign_to_sheet(
     res_mov = query_mov.order("dia").execute()
     mov_rows = res_mov.data or []
 
-    if is_vip:
+    # Filtrar VIP de forma inteligente
+    # Se for aba VIP, pega VIP. Se for aba LEAD TOTAL (geral), exclui VIP para não contaminar
+    is_vip_sheet = "vip" in sheet_name.lower()
+    
+    if is_vip or is_vip_sheet:
         mov_rows = [r for r in mov_rows if "vip" in str(r.get("nome_campanha", "")).lower()]
-    elif exclude_vip:
-        mov_rows = [r for r in mov_rows if "vip" not in str(r.get("nome_campanha", "")).lower()]
-
-    # 2. Leads ativos no Supabase
-    query_leads = supabase_client.table("vw_leads_ativos_grupos").select("*")
-    if filter_tag:
-        query_leads = query_leads.ilike("nome_campanha", f"%{filter_tag}%")
-    res_leads = query_leads.execute()
-    leads_rows = res_leads.data or []
-
-    if is_vip:
         leads_rows = [r for r in leads_rows if "vip" in str(r.get("nome_campanha", "")).lower()]
-    elif exclude_vip:
+    elif exclude_vip or "total" in sheet_name.lower():
+        mov_rows = [r for r in mov_rows if "vip" not in str(r.get("nome_campanha", "")).lower()]
         leads_rows = [r for r in leads_rows if "vip" not in str(r.get("nome_campanha", "")).lower()]
 
     total_leads = sum(int(r.get("quantidade_de_leads", 0)) for r in leads_rows)
@@ -202,59 +196,135 @@ def sync_campaign_to_sheet(
     spreadsheet = google_client.open_by_key(spreadsheet_id)
     worksheet = spreadsheet.worksheet(sheet_name)
 
+    # 4. Ler estado atual da Coluna A (Datas), Coluna I (Datas) e Coluna J (Leads no Dia)
     col_a = worksheet.col_values(1)
+    col_j = worksheet.col_values(10)
+
+    # Mapear datas que já estão na Coluna A e encontrar a última linha ocupada por datas
     date_to_row: Dict[str, int] = {}
+    last_date_row = 1  # Linha 1 é o cabeçalho
     for idx, cell_val in enumerate(col_a, start=1):
         if idx == 1:
             continue
         clean_date = str(cell_val).strip()
-        if clean_date:
+        if clean_date and ("/" in clean_date or "-" in clean_date):
             date_to_row[clean_date] = idx
+            if idx > last_date_row:
+                last_date_row = idx
 
-    last_row = len(col_a)
-    if last_row < 1:
-        last_row = 1
+    # Mapear valores já salvos na Coluna J para cada linha
+    existing_leads_by_row: Dict[int, Any] = {}
+    for idx, cell_val in enumerate(col_j, start=1):
+        if idx == 1:
+            continue
+        clean_val = str(cell_val).strip()
+        if clean_val and clean_val != "":
+            existing_leads_by_row[idx] = clean_val
 
     updates = []
     inserted_count = 0
     updated_count = 0
 
+    hoje_str = datetime.date.today().strftime("%d/%m/%Y")
+
+    # Mapear os registros de movimentação acumulando (SOMANDO) por data para evitar sobrescritas!
+    mov_by_date: Dict[str, Dict[str, int]] = {}
     for item in mov_rows:
         raw_date = item.get("dia")
         if not raw_date:
             continue
         try:
             d_obj = datetime.datetime.strptime(str(raw_date)[:10], "%Y-%m-%d").date()
-            dia_formatado = d_obj.strftime("%d/%m/%Y")
+            dia_f = d_obj.strftime("%d/%m/%Y")
         except ValueError:
-            dia_formatado = str(raw_date)
+            dia_f = str(raw_date)
 
         entradas = int(item.get("entradas", 0))
         saidas = int(item.get("saidas", 0))
+        saldo = int(item.get("saldo_dia", entradas - saidas))
+
+        if dia_f in mov_by_date:
+            mov_by_date[dia_f]["entradas"] += entradas
+            mov_by_date[dia_f]["saidas"] += saidas
+            mov_by_date[dia_f]["saldo"] += saldo
+        else:
+            mov_by_date[dia_f] = {
+                "entradas": entradas,
+                "saidas": saidas,
+                "saldo": saldo
+            }
+
+    # Ordenar datas cronologicamente
+    sorted_dates = sorted(
+        mov_by_date.keys(),
+        key=lambda d: datetime.datetime.strptime(d, "%d/%m/%Y") if "/" in d else d
+    )
+
+    # Calcular histórico retroativo de leads por dia (de trás para frente) caso ainda não esteja salvo
+    calculated_leads_by_date: Dict[str, int] = {}
+    if sorted_dates:
+        curr_leads = total_leads
+        for d in reversed(sorted_dates):
+            calculated_leads_by_date[d] = curr_leads
+            saldo_dia = mov_by_date[d]["saldo"]
+            curr_leads = max(0, curr_leads - saldo_dia)
+
+    # Próxima linha livre para novas datas (sempre contínua após a última data existente)
+    current_free_row = max(last_date_row + 1, 2)
+
+    # Processar cada dia ordenado
+    for dia_formatado in sorted_dates:
+        item_data = mov_by_date[dia_formatado]
+        entradas = item_data["entradas"]
+        saidas = item_data["saidas"]
 
         if dia_formatado in date_to_row:
             row_idx = date_to_row[dia_formatado]
             updated_count += 1
         else:
-            last_row = max(last_row + 1, 2)
-            row_idx = last_row
+            row_idx = current_free_row
+            current_free_row += 1
             date_to_row[dia_formatado] = row_idx
             inserted_count += 1
+            # Coluna A: Data
             updates.append({
                 "range": f"A{row_idx}",
                 "values": [[dia_formatado]]
             })
 
+        # Atualiza Colunas B e C (Entradas e Saídas)
         updates.append({
             "range": f"B{row_idx}:C{row_idx}",
             "values": [[entradas, saidas]]
         })
+
+        # Coluna D: Fórmula (=B{row_idx}-C{row_idx})
         updates.append({
             "range": f"D{row_idx}",
             "values": [[f"=B{row_idx}-C{row_idx}"]]
         })
 
-    # Atualiza célula G2 com Total de Leads
+        # Coluna I: DATA
+        updates.append({
+            "range": f"I{row_idx}",
+            "values": [[dia_formatado]]
+        })
+
+        # Coluna J: LEADS NO DIA
+        if dia_formatado == hoje_str or dia_formatado == sorted_dates[-1]:
+            leads_dia_val = total_leads
+            updates.append({
+                "range": f"J{row_idx}",
+                "values": [[leads_dia_val]]
+            })
+        elif row_idx not in existing_leads_by_row:
+            leads_dia_val = calculated_leads_by_date.get(dia_formatado, total_leads)
+            updates.append({
+                "range": f"J{row_idx}",
+                "values": [[leads_dia_val]]
+            })
+
+    # Atualiza célula G2 com Total de Leads Ativos da Campanha
     updates.append({
         "range": "G2",
         "values": [[total_leads]]

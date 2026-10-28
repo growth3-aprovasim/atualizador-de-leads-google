@@ -15,6 +15,8 @@ Sistema automatizado em Python/Docker para extrair métricas de movimentação e
   - Extrai os dados diários da view `vw_movimentacao_diaria_grupos`.
   - Atualiza as colunas: **A** (Data `DD/MM/YYYY`), **B** (Entradas) e **C** (Saídas).
   - Garante e preserva a fórmula da coluna **D** (`=B{linha}-C{linha}`).
+  - Preenche a **Coluna I (DATA)** e **Coluna J (LEADS NO DIA)** com o snapshot de quantos leads a campanha tinha em cada data.
+  - O dia atual em andamento atualiza a quantidade de leads em tempo real a cada 10 minutos e consolida às 23:59.
   - Toda vez que o dia vira, cria automaticamente a linha de baixo preservando o histórico das linhas superiores.
   - Preenche a célula **G2** com a quantidade de **Leads Ativos** da view `vw_leads_ativos_grupos`.
 - **Pronto para EasyPanel:**
