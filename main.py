@@ -89,21 +89,58 @@ def save_config(cfg: Dict[str, Any]) -> None:
 
 
 def get_google_client() -> gspread.Client:
-    """Obtém cliente autenticado do Google Sheets."""
-    json_creds_raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "google_credentials.json")
+    """Obtém cliente autenticado do Google Sheets com suporte flexível a JSON direto ou arquivo."""
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    if json_creds_raw and json_creds_raw.strip().startswith("{"):
-        creds_dict = json.loads(json_creds_raw)
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        return gspread.authorize(credentials)
-    if os.path.exists(creds_path):
-        return gspread.service_account(filename=creds_path)
+
+    # 1. Tentar pegar JSON direto de qualquer variável possível
+    env_candidates = [
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
+        os.getenv("GOOGLE_CREDENTIALS_PATH"),
+        os.getenv("GOOGLE_CREDENTIALS_JSON"),
+        os.getenv("GOOGLE_CREDS"),
+        os.getenv("GOOGLE_CREDENTIALS")
+    ]
+
+    for candidate in env_candidates:
+        if candidate and isinstance(candidate, str):
+            candidate_clean = candidate.strip()
+            # Remover possíveis aspas externas que o EasyPanel ou shell possam ter adicionado
+            if (candidate_clean.startswith('"') and candidate_clean.endswith('"')) or \
+               (candidate_clean.startswith("'") and candidate_clean.endswith("'")):
+                candidate_clean = candidate_clean[1:-1].strip()
+
+            if "{" in candidate_clean and ("private_key" in candidate_clean or "service_account" in candidate_clean):
+                try:
+                    creds_dict = json.loads(candidate_clean)
+                    # Corrigir quebra de linha escapada na private_key se necessário
+                    if "private_key" in creds_dict and "\\n" in creds_dict["private_key"]:
+                        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                    
+                    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+                    return gspread.authorize(credentials)
+                except Exception as e:
+                    logger.error(f"Tentativa de ler credenciais do Google via JSON falhou: {e}")
+
+    # 2. Tentar arquivo físico no disco
+    creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "google_credentials.json")
+    if os.path.exists(creds_path) and os.path.isfile(creds_path):
+        try:
+            return gspread.service_account(filename=creds_path)
+        except Exception as e:
+            logger.error(f"Erro ao carregar arquivo '{creds_path}': {e}")
+
+    if os.path.exists("google_credentials.json"):
+        try:
+            return gspread.service_account(filename="google_credentials.json")
+        except Exception as e:
+            logger.error(f"Erro ao carregar 'google_credentials.json': {e}")
+
     raise FileNotFoundError(
-        f"Credenciais do Google não encontradas em '{creds_path}' nem em GOOGLE_SERVICE_ACCOUNT_JSON."
+        "Credenciais do Google não encontradas! No EasyPanel, adicione a variável GOOGLE_SERVICE_ACCOUNT_JSON "
+        "com o JSON da conta de serviço."
     )
 
 
