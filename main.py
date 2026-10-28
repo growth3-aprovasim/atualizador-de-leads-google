@@ -179,6 +179,13 @@ def sync_campaign_to_sheet(
     res_mov = query_mov.order("dia").execute()
     mov_rows = res_mov.data or []
 
+    # 2. Leads ativos no Supabase
+    query_leads = supabase_client.table("vw_leads_ativos_grupos").select("*")
+    if filter_tag:
+        query_leads = query_leads.ilike("nome_campanha", f"%{filter_tag}%")
+    res_leads = query_leads.execute()
+    leads_rows = res_leads.data or []
+
     # Filtrar VIP de forma inteligente
     # Se for aba VIP, pega VIP. Se for aba LEAD TOTAL (geral), exclui VIP para não contaminar
     is_vip_sheet = "vip" in sheet_name.lower()
